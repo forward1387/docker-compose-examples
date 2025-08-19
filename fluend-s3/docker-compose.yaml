@@ -1,0 +1,51 @@
+services:
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    ports:
+      - "9000:9000"
+      - "9090:9090"
+    volumes:
+      - minio_data:/data
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+      MINIO_BUCKET_NAME: miniodata
+    command: server /data --console-address ":9090"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+      start_period: 5s
+    
+  fluentd: 
+    image: fluent/fluentd:v1.19-debian
+    container_name: fluentd
+    ports:
+      - "24224:24224"
+      - "24224:24224/udp"
+    volumes:
+      - ./fluentd/config/fluentd.conf:/fluentd/etc/fluentd.conf
+      - ./fluentd/logs:/fluentd/log
+      - ./fluentd/.aws:/root/.aws
+    depends_on:
+      - minio
+
+  client:
+    build:
+      context: client/  
+      dockerfile: Dockerfile
+    depends_on:
+      - fluentd
+    logging:
+      driver: "fluentd"
+      options:
+        tag: main
+        fluentd-async: "true"
+        fluentd-async-reconnect-interval: "1s"
+        fluentd-buffer-limit: "1048576"
+        fluentd-retry-wait: "1s"
+
+volumes:
+  minio_data:
